@@ -6,15 +6,15 @@ include("lut/mt.jl")
 """
 Determines which case in the triangle table we are dealing with
 """
-@inline function tetIx(tIx::IType, vals, iso::Real) where {IType <: Integer}
+@inline function tetIx(tIx, vals, iso::Real)
     v1 = vals[subTets[tIx][1]]
     v2 = vals[subTets[tIx][2]]
     v3 = vals[subTets[tIx][3]]
     v4 = vals[subTets[tIx][4]]
-    ix = v1 < iso ? 1 : 0
-    (v2 < iso) && (ix |= 2)
-    (v3 < iso) && (ix |= 4)
-    (v4 < iso) && (ix |= 8)
+    ix = v1 < iso ? 0x01 : 0x00
+    (v2 < iso) && (ix |= 0x02)
+    (v3 < iso) && (ix |= 0x04)
+    (v4 < iso) && (ix |= 0x08)
     ix
 end
 
@@ -25,8 +25,7 @@ two edges get the same index) and unique (every edge gets the same ID
 regardless of which of its neighboring voxels is asking for it) in order
 for vertex sharing to be implemented properly.
 """
-@inline function vertId(e::IType, x::IType, y::IType, z::IType,
-                nx::IType, ny::IType) where {IType <: Integer}
+@inline function vertId(e, x, y, z, nx, ny)
     dx, dy, dz = voxCrnrPos[voxEdgeCrnrs[e][1]]
     voxEdgeDir[e]+7*(x-1+dx+nx*(y-1+dy+ny*(z-1+dz)))
 end
@@ -37,7 +36,7 @@ occurs.
 eps represents the "bump" factor to keep vertices away from voxel
 corners (thereby preventing degeneracies).
 """
-@inline function vertPos(e, x, y, z, vals::NTuple{8,T}, iso::Real, eps::Real, ::Type{VertType}) where {T<:Real, IType <: Integer, VertType}
+@inline function vertPos(e, x, y, z, vals::NTuple{8,T}, iso::Real, eps::Real, ::Type{VertType}) where {T<:Real, VertType}
 
     ixs     = voxEdgeCrnrs[e]
     srcVal  = vals[ixs[1]]
@@ -54,12 +53,11 @@ end
 Gets the vertex ID, adding it to the vertex dictionary if not already
 present.
 """
-@inline function getVertId(e::IType, x::IType, y::IType, z::IType,
-                   nx::IType, ny::IType,
-                   vals, iso::Real,
-                   vts::Dict,
-                   vtsAry::Vector,
-                   eps::Real, ::Type{VertType}) where { IType <: Integer, VertType}
+@inline function getVertId(e, x, y, z, nx, ny,
+                           vals, iso::Real,
+                           vts::Dict,
+                           vtsAry::Vector,
+                           eps::Real, ::Type{VertType}) where {VertType}
 
     vId = vertId(e, x, y, z, nx, ny)
     # TODO we can probably immediately construct the vertex array here and use vert id to map to sequential ordering
@@ -85,37 +83,30 @@ end
 Processes a voxel, adding any new vertices and faces to the given
 containers as necessary.
 """
-function procVox(vals, iso::Real,
-                 x::IType, y::IType, z::IType,
-                 nx::IType, ny::IType,
+function procVox(vals, iso::Real, x, y, z, nx, ny,
                  vts::Dict, vtsAry::Vector, fcs::Vector,
                  eps::Real,
-                 ::Type{VertType}, ::Type{FaceType}) where {T <: Real, S <: Real, IType <: Integer, VertType, FaceType}
+                 ::Type{VertType}, ::Type{FaceType}) where {VertType, FaceType}
 
     # check each sub-tetrahedron in the voxel
-    @inbounds for i::IType = 1:6
+    @inbounds for i = 1:6
         tIx = tetIx(i, vals, iso)
-        (tIx == 0 || tIx == 15) && continue
+        (tIx == 0x00 || tIx == 0x0f) && continue
 
-        e1 = tetTri[tIx][1]
-        e2 = tetTri[tIx][2]
-        e3 = tetTri[tIx][3]
+        e = tetTri[tIx]
 
         # add the face to the list
         push!(fcs, FaceType(
-                    getVertId(voxEdgeId(i, e1), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
-                    getVertId(voxEdgeId(i, e2), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
-                    getVertId(voxEdgeId(i, e3), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType)))
+                    getVertId(voxEdgeId(i, e[1]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
+                    getVertId(voxEdgeId(i, e[2]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
+                    getVertId(voxEdgeId(i, e[3]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType)))
 
-        e1 = tetTri[tIx][4]
         # bail if there are no more faces
-        e1 == 0 && continue
-        e2 = tetTri[tIx][5]
-        e3 = tetTri[tIx][6]
+        e[4] == 0 && continue
         push!(fcs, FaceType(
-                    getVertId(voxEdgeId(i, e1), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
-                    getVertId(voxEdgeId(i, e2), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
-                    getVertId(voxEdgeId(i, e3), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType)))
+                    getVertId(voxEdgeId(i, e[4]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
+                    getVertId(voxEdgeId(i, e[5]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType),
+                    getVertId(voxEdgeId(i, e[6]), x, y, z, nx, ny, vals, iso, vts, vtsAry, eps, VertType)))
     end
 end
 
