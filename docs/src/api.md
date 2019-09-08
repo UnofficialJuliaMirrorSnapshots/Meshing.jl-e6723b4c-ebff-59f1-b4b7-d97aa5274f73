@@ -46,3 +46,9 @@ Below is a comparison of the algorithms:
 | MarchingCubes      | Yes      | No       | ~2x                 | Triangle  |
 | MarchingTetrahedra | Yes      | Yes      | ~3x                 | Triangle  |
 | NaiveSurfaceNets   | No       | Yes      | 1x                  | Quad      |
+
+```@docs
+MarchingCubes
+MarchingTetrahedra
+NaiveSurfaceNets
+```

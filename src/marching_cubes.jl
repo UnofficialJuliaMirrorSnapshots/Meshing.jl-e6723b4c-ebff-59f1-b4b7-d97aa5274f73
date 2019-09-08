@@ -22,7 +22,7 @@ end
 function marching_cubes(sdf::SignedDistanceField{3,ST,FT}, ::Type{VertType}, ::Type{FaceType},
                                iso=0.0,
                                MT::Type{M}=SimpleMesh{Point{3,Float64},Face{3,Int}},
-                               eps=0.00001, reduceverts=true) where {ST,FT,M<:AbstractMesh, VertType, FaceType}
+                               eps=0.00001, reduceverts=true, insidepositive=Val(false)) where {ST,FT,M<:AbstractMesh, VertType, FaceType}
     nx, ny, nz = size(sdf)
     h = HyperRectangle(sdf)
     w = widths(h)
@@ -54,7 +54,7 @@ function marching_cubes(sdf::SignedDistanceField{3,ST,FT}, ::Type{VertType}, ::T
 
         #Determine the index into the edge table which
         #tells us which vertices are inside of the surface
-        cubeindex = _get_cubeindex(iso_vals, iso)
+        cubeindex = insidepositive === Val(true) ? _get_cubeindex_pos(iso_vals, iso) : _get_cubeindex(iso_vals, iso)
 
         # Cube is entirely in/out of the surface
         (cubeindex == 0x00 || cubeindex == 0xff) && continue
@@ -85,7 +85,7 @@ function marching_cubes(f::Function,
                         samples::NTuple{3,Int}=(256,256,256),
                         iso=0.0,
                         MT::Type{M}=SimpleMesh{Point{3,Float64},Face{3,Int}},
-                        eps=0.00001, reduceverts=true) where {M<:AbstractMesh, VertType, FaceType}
+                        eps=0.00001, reduceverts=true, insidepositive=Val(false)) where {M<:AbstractMesh, VertType, FaceType}
 
     FT = eltype(VertType)
 
@@ -134,7 +134,7 @@ function marching_cubes(f::Function,
 
         #Determine the index into the edge table which
         #tells us which vertices are inside of the surface
-        cubeindex = _get_cubeindex(iso_vals, iso)
+        cubeindex = insidepositive === Val(true) ? _get_cubeindex_pos(iso_vals, iso) : _get_cubeindex(iso_vals, iso)
 
         # Cube is entirely in/out of the surface
         (cubeindex == 0x00 || cubeindex == 0xff) && continue
@@ -152,6 +152,13 @@ function marching_cubes(f::Function,
     MT(vts,fcs)
 end
 
+
+"""
+    _mc_create_triangles!(vts, fcs, vertlist, cubeindex, FaceType)
+
+Create triangles by only adding vertices within the voxel.
+Each face does not share a reference to a vertex with another face.
+"""
 @inline function _mc_create_triangles!(vts, fcs, vertlist, cubeindex, FaceType)
     fct = length(vts) + 3
 
@@ -190,6 +197,8 @@ end
 end
 
 """
+    _mc_unique_triangles!(vts, fcs, vertlist, cubeindex, FaceType)
+
 Create triangles by only adding unique vertices within the voxel.
 Each face may share a reference to a vertex with another face.
 """
@@ -199,9 +208,9 @@ Each face may share a reference to a vertex with another face.
     vert_to_add = _mc_verts[cubeindex]
     # Each vertex list will have atleast 3 elements so we can
     # add them to the list immediately
-    push!(vts, vertlist[vert_to_add[1]])
-    push!(vts, vertlist[vert_to_add[2]])
-    push!(vts, vertlist[vert_to_add[3]])
+    push!(vts, vertlist[vert_to_add[1]],
+               vertlist[vert_to_add[2]],
+               vertlist[vert_to_add[3]])
 
     for i = 4:12
         elt = vert_to_add[i]
@@ -227,6 +236,11 @@ Each face may share a reference to a vertex with another face.
 
 end
 
+"""
+    find_vertices_interp!(vertlist, points, iso_vals, cubeindex, iso, eps)
+
+Find the vertices where the surface intersects the cube
+"""
 @inline function find_vertices_interp!(vertlist, points, iso_vals, cubeindex, iso, eps)
     if !iszero(edge_table[cubeindex] & 0x001)
         vertlist[1] =
@@ -278,8 +292,12 @@ end
     end
 end
 
-# Linearly interpolate the position where an isosurface cuts
-# an edge between two vertices, each with their own scalar value
+"""
+    vertex_interp(iso, p1, p2, valp1, valp2, eps = 0.00001)
+
+Linearly interpolate the position where an isosurface cuts
+an edge between two vertices, each with their own scalar value
+"""
 function vertex_interp(iso, p1, p2, valp1, valp2, eps = 0.00001)
 
     abs(iso - valp1) < eps && return p1
@@ -291,27 +309,19 @@ function vertex_interp(iso, p1, p2, valp1, valp2, eps = 0.00001)
     return p
 end
 
-struct MarchingCubes{T} <: AbstractMeshingAlgorithm
-    iso::T
-    eps::T
-    reduceverts::Bool
-end
 
-MarchingCubes(;iso::T1=0.0, eps::T2=1e-3, reduceverts::Bool=true) where {T1, T2} = MarchingCubes{promote_type(T1, T2)}(iso, eps, reduceverts)
-MarchingCubes(iso) = MarchingCubes(iso=iso)
-MarchingCubes(iso,eps) = MarchingCubes(iso=iso,eps=eps)
 
 function (::Type{MT})(df::SignedDistanceField{3,ST,FT}, method::MarchingCubes)::MT where {MT <: AbstractMesh, ST, FT}
     VertType, FaceType = _determine_types(MT, FT)
-    marching_cubes(df, VertType, FaceType, method.iso, MT, method.eps, method.reduceverts)
+    marching_cubes(df, VertType, FaceType, method.iso, MT, method.eps, method.reduceverts, Val(method.insidepositive))
 end
 
 function (::Type{MT})(f::Function, h::HyperRectangle, size::NTuple{3,Int}, method::MarchingCubes)::MT where {MT <: AbstractMesh}
     VertType, FaceType = _determine_types(MT)
-    marching_cubes(f, h, VertType, FaceType, size, method.iso, MT, method.eps, method.reduceverts)
+    marching_cubes(f, h, VertType, FaceType, size, method.iso, MT, method.eps, method.reduceverts, Val(method.insidepositive))
 end
 
 function (::Type{MT})(f::Function, h::HyperRectangle, method::MarchingCubes; size::NTuple{3,Int}=(128,128,128))::MT where {MT <: AbstractMesh}
     VertType, FaceType = _determine_types(MT)
-    marching_cubes(f, h, VertType, FaceType, size, method.iso, MT, method.eps, method.reduceverts)
+    marching_cubes(f, h, VertType, FaceType, size, method.iso, MT, method.eps, method.reduceverts, Val(method.insidepositive))
 end
