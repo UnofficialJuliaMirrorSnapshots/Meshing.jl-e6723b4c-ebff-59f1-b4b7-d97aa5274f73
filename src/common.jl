@@ -3,7 +3,7 @@
     _get_cubeindex(iso_vals, iso)
 
 given `iso_vals` and iso, return an 8 bit value corresponding
-to each corner of a cube. In each bit position, 
+to each corner of a cube. In each bit position,
 0 indicates in the isosurface and 1 indicates outside the surface,
 where the sign convention indicates negative inside the surface
 """
@@ -23,7 +23,7 @@ end
     _get_cubeindex_pos(iso_vals, iso)
 
 given `iso_vals` and iso, return an 8 bit value corresponding
-to each corner of a cube. In each bit position, 
+to each corner of a cube. In each bit position,
 0 indicates in the isosurface and 1 indicates outside the surface,
 where the sign convention indicates positive inside the surface
 """
@@ -65,3 +65,50 @@ function _determine_types(meshtype, fieldtype=Float64, facelen=3)
     end
     VertType, FaceType
 end
+
+#
+# General isosurface docstring
+#
+
+@doc """
+
+    function isosurface(sdf::AbstractArray{T, 3}, method::AbstractMeshingAlgorithm,
+                         [ VertType = SVector{3,Float64} ], [ FaceType} = SVector{3, Int} ] ;
+                         origin = SVector(-1.0,-1.0,-1.0), widths = SVector(2.0,2.0,2.0))
+
+    function isosurface(f::Function, method::AbstractMeshingAlgorithm,
+                         [ VertType = SVector{3,Float64} ], [FaceType = SVector{3, Int} ] ;
+                         origin = SVector(-1.0,-1.0,-1.0), widths = SVector(2.0,2.0,2.0)
+                         samples=(24,24,24))`
+
+`isosurface` is the general interface to all isosurface extraction algorithms.
+
+Returns: (Vector{VertType}, Vector{FaceType})
+
+Defaults:
+- VertType = SVector{3,Float64}
+- FaceType = SVector{3, Int} ] ;
+- origin = SVector(-1.0,-1.0,-1.0)
+- widths = SVector(2.0,2.0,2.0)
+- samples=(24,24,24) (function sampling only)
+
+`method` must be an instance of an `AbstractMeshingAlgorithm`
+
+If a subtype of `AbstractArray` is specified, the mesh will be default be centered at the origin between
+(-1,1) in each axis. This may be overridden by specifying a new origin and widths for the axis-aligned bounding box
+using keywords of the same names. For example if we want our vertices in the range of (0,1), we can specify `origin=SVector(0,0,0)`
+and `widths = SVector(1,1,1)`.
+
+If a function is specified, it will be uniformly sampled in each axis by the amount specified in `samples`.
+The function is called the a single argument of `VertType`.
+
+Performance Tips:
+- ensure `VertType`, `origin`, and `widths` are all of the same type
+- ensure the element type of `VertType` is the same as the specified isolevel
+
+See also:
+- MarchingCubes
+- MarchingTetrahedra
+- NaiveSurfaceNets
+
+""" isosurface
